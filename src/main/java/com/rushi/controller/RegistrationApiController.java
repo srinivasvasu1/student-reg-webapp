@@ -25,7 +25,7 @@ public class RegistrationApiController {
 
     @GetMapping("/api/registrations")
     public List<HomeController.RegistrationForm> getRegistrations() {
-        logger.info("Fetching all registrations");
+        logger.info("Fetching all registrations")
         return HomeController.REGISTRATIONS;
     }
     
