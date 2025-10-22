@@ -39,7 +39,11 @@
      } catch(err){
        currentBuild.result = 'FAILURE'
      } finally {
-       def buildStatus = currentBuild.result ?: 'SUCCESS'    
+       def buildStatus = currentBuild.result ?: 'SUCCESS'
+       def slackColorCode = (buildStatus == 'SUCCESS') ? 'good' : (buildStatus == 'FAILURE') ? 'danger' : 'warning'
+       
+       slackSend channel: 'lic-app-team', color: "${slackColorCode}", message: "Jenkins Job ${env.JOB_NAME} - ${env.BUILD_NUMBER} - ${buildStatus}. Check console output at ${env.BUILD_URL}"
+       
        emailext body: """
                     <html>
                     <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
