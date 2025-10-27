@@ -32,7 +32,7 @@ pipeline {
          steps {
             script {
                 def branchName = scm.branches[0].name
-                sh "echo Building the Application ${brachName}"
+                sh "echo Building the Application ${branchName}"
                 sh "mvn clean package"
               }
             }
