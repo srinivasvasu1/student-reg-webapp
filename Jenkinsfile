@@ -72,9 +72,8 @@ pipeline {
                 """
             }
          }
-     }
-  }
-
+    }
+  
   stage("Deploy War File To Prod Server"){
         when {
             branch 'main'
@@ -87,7 +86,6 @@ pipeline {
             }
          }
      }
-
 }
 
   post {
