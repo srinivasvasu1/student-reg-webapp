@@ -48,7 +48,7 @@ pipeline {
         stage("Deploy War File To Tomcat"){
             
             when {
-                branch 'development'
+                expression { env.BRANCH_NAME ==  'development' }
             }
 
             steps {
@@ -66,8 +66,9 @@ pipeline {
 
         stage("Deploy War File To QA Server"){
             
+            
             when {
-               branch 'qa'
+                expression { env.BRANCH_NAME ==  'qa' }
             }
 
             steps {
@@ -80,13 +81,14 @@ pipeline {
         }
   
        stage("Deploy War File To Prod Server"){
+             
             when {
-                branch 'main'
+                expression { env.BRANCH_NAME ==  'main' }
             }
             steps {
               sshagent(['TomcatServer_SSH_Credetails']) {
                 sh """
-                  echo "Deploying to QA Server"
+                  echo "Deploying to Prod Server"
                     """
               }
             }
