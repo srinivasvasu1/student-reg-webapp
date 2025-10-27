@@ -4,96 +4,113 @@ pipeline {
     
     triggers {
        githubPush()
-     }
+    }
 
     options {
-      buildDiscarder logRotator(numToKeepStr: '5')
-      timeout(time: 10, unit: 'MINUTES')
-      disableConcurrentBuilds()
+        buildDiscarder logRotator(numToKeepStr: '5')
+        disableConcurrentBuilds()
+        timeout(time: 10,unit: 'MINUTES')
     }
-    
+ 
     environment {
-        SONARQUBE_URL = "http://13.57.206.25:9000"
-        SONAR_QUBE_TOKEN = credentials('SonarToken')
-        TOMCAT_SERVER_IP = "172.31.21.97"
+        
+        SONARQUBE_HOST = "http://172.31.8.134:9000"
+        SONARQUBE_TOKEN = credentials('SonarQubeToken')
+        tomcatserverSSHUserName = "ec2-user"
+        tomcatSystemIP = "172.31.19.130"
+        
     }
-    
+ 
     tools {
-        maven 'Maven-3.9.10'
+        maven 'Maven-3.9.11'
     }
-
-    stages {
-
-
-       stage("Maven Clean Package"){
-           steps {
-               sh "mvn clean package"
-           }
-       }
-       
-      stage("Sonar Scan"){
-           steps {
-            sh "mvn sonar:sonar -Dsonar.url=${SONARQUBE_URL} -Dsonar.token=${SONAR_QUBE_TOKEN}"
-          }
-      }
-      
-      stage("Upload War To Nexus"){
-          steps {
-              sh "mvn clean deploy"
-          }
-      }
-      
-       stage("Deployt To Dev Server") {
-        when {
-            expression {
-                return env.BRANCH_NAME == 'development'
-            }
-        }
-        steps{
     
-            sshagent(['Tomcat_Server']) {
-                sh """
-                     ssh -o  StrictHostKeyChecking=no ec2-user@${TOMCAT_SERVER_IP} sudo systemctl stop tomcat
-                     echo Stoping the Tomcat Process
-                     sleep 30
-                     scp -o  StrictHostKeyChecking=no target/student-reg-webapp.war ec2-user@${TOMCAT_SERVER_IP}:/opt/tomcat/webapps/student-reg-webapp.war
-                     echo Copying the War file to Tomcat Server
-                     ssh -o  StrictHostKeyChecking=no ec2-user@${TOMCAT_SERVER_IP} sudo systemctl start tomcat
-                     echo Strating the Tomcat process
-                   """
+    stages{
+
+        stage("Build Stage"){
+           
+         steps {
+                sh "mvn clean package"
+           }
+        }
+     
+        stage("Sonar Scan"){
+            steps {
+                sh "mvn clean verify sonar:sonar -Dsonar.host=${SONARQUBE_HOST} -Dsonar.token=${SONARQUBE_TOKEN}"
             }
         }
-      }
-      
+     
+        stage("Upload Artificat To Nexus"){
+            steps {
+                sh "mvn clean deploy"
+            }
+        }
+     
+        stage("Deploy War File To Tomcat"){
+            
+            when {
+                expression { env.BRANCH_NAME ==  "development" }
+            }
+
+            steps {
+                sshagent(['TomcatServer_SSH_Credetails']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${tomcatserverSSHUserName}@${tomcatSystemIP} sudo systemctl stop tomcat
+                        sleep 20
+                        ssh -o StrictHostKeyChecking=no ${tomcatserverSSHUserName}@${tomcatSystemIP} rm /opt/tomcat/webapps/student-reg-webapp.war || true
+                        scp -o StrictHostKeyChecking=no target/student-reg-webapp.war ${tomcatserverSSHUserName}@${tomcatSystemIP}:/opt/tomcat/webapps/student-reg-webapp.war
+                        ssh -o StrictHostKeyChecking=no ${tomcatserverSSHUserName}@${tomcatSystemIP} sudo systemctl start tomcat
+                        """
+                }
+            }
+        }
+
+        stage("Deploy War File To QA Server"){
+            
+            
+            when {
+                expression { env.BRANCH_NAME ==  "QA" }
+            }
+
+            steps {
+                sshagent(['TomcatServer_SSH_Credetails']) {
+                  sh """
+                    echo "Deploying to QA Server"
+                    """
+                }
+            }
+        }
+  
+       stage("Deploy War File To Prod Server"){
+             
+            when {
+                expression { env.BRANCH_NAME ==  "main" }
+            }
+            steps {
+              sshagent(['TomcatServer_SSH_Credetails']) {
+                sh """
+                  echo "Deploying to Prod Server"
+                    """
+              }
+            }
+        }
+
+    } 
+
+
+    post {
+        success {
+            slackSend channel: 'lic-app-team', color: "good", message: "Jenkins Job ${env.JOB_NAME} - ${env.BUILD_NUMBER} - Success . Please heck console output at ${env.BUILD_URL}"  
+        }
        
-   }
-   
-   post {
+        failure {
+            
+            slackSend channel: 'lic-app-team', color: "danager", message: "Jenkins Job ${env.JOB_NAME} - ${env.BUILD_NUMBER} - Failed . Please Check console output at ${env.BUILD_URL}"  
+        }
+       
         always {
             cleanWs()
         }
-        success {
-        slackSend (channel: 'lic-appteam', color: "good", message: "Build - SUCCESS : ${env.JOB_NAME} #${env.BUILD_NUMBER} - URL: ${env.BUILD_URL}")
-          sendEmail(
-           "${env.JOB_NAME} - ${env.BUILD_NUMBER} - Build SUCCESS",
-           "Build SUCCESS. Please check the console output at ${env.BUILD_URL}",
-           'balajireddy.urs@gmail.com' )
-        }
-        failure {
-         slackSend (channel: 'lic-appteam', color: "danger", message: "Build - FAILED : ${env.JOB_NAME} #${env.BUILD_NUMBER} - URL: ${env.BUILD_URL}")    
-         sendEmail(
-           "${env.JOB_NAME} - ${env.BUILD_NUMBER} - Build FAILED",
-           "Build FAILED. Please check the console output at ${env.BUILD_URL}",
-           'balajireddy.urs@gmail.com' )
-        }
     }
-}
 
-def sendEmail(String subject, String body, String recipient) {
-    emailext(
-        subject: subject,
-        body: body,
-        to: recipient,
-        mimeType: 'text/html'
-    )
 }
