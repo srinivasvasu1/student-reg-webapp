@@ -28,8 +28,11 @@ pipeline {
     stages{
 
         stage("Build Stage"){
+            script {
+                def brachName = sh(scriprt: 'git rev-parse --abbrev-ref HEAD',returnStdout: true).trim()
+            }
             steps {
-                sh "echo Building the Application ${env.BRANCH_NAME}"
+                sh "echo Building the Application ${brachName}"
                 sh "mvn clean package"
             }
         }
