@@ -29,6 +29,7 @@ pipeline {
 
         stage("Build Stage"){
             steps {
+                sh "echo Building the Application ${env.BRANCH_NAME}"
                 sh "mvn clean package"
             }
         }
@@ -48,7 +49,7 @@ pipeline {
         stage("Deploy War File To Tomcat"){
             
             when {
-                expression { env.BRANCH_NAME ==  'development' }
+                expression { env.BRANCH_NAME ==  "development" }
             }
 
             steps {
@@ -68,7 +69,7 @@ pipeline {
             
             
             when {
-                expression { env.BRANCH_NAME ==  'qa' }
+                expression { env.BRANCH_NAME ==  "QA" }
             }
 
             steps {
@@ -83,7 +84,7 @@ pipeline {
        stage("Deploy War File To Prod Server"){
              
             when {
-                expression { env.BRANCH_NAME ==  'main' }
+                expression { env.BRANCH_NAME ==  "main" }
             }
             steps {
               sshagent(['TomcatServer_SSH_Credetails']) {
