@@ -30,9 +30,8 @@ pipeline {
         stage("Build Stage"){
            
          steps {
-
             script {
-                def brachName = sh(script: 'git rev-parse --abbrev-ref HEAD',returnStdout: true).trim()
+                def branchName = scm.branches[0].name
                 sh "echo Building the Application ${brachName}"
                 sh "mvn clean package"
               }
