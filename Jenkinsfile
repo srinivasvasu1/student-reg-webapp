@@ -45,6 +45,9 @@ pipeline {
      }
      
      stage("Deploy War File To Tomcat"){
+        when {
+            branch 'development'
+        }
          steps {
              sshagent(['TomcatServer_SSH_Credetails']) {
               sh """
@@ -57,8 +60,36 @@ pipeline {
             }
          }
      }
+
+  stage("Deploy War File To QA Server"){
+        when {
+            branch 'qa'
+        }
+         steps {
+             sshagent(['TomcatServer_SSH_Credetails']) {
+              sh """
+                   echo "Deploying to QA Server"
+                """
+            }
+         }
+     }
   }
-  
+
+  stage("Deploy War File To Prod Server"){
+        when {
+            branch 'main'
+        }
+         steps {
+             sshagent(['TomcatServer_SSH_Credetails']) {
+              sh """
+                   echo "Deploying to QA Server"
+                """
+            }
+         }
+     }
+
+}
+
   post {
        success {
         slackSend channel: 'lic-app-team', color: "good", message: "Jenkins Job ${env.JOB_NAME} - ${env.BUILD_NUMBER} - Success . Please heck console output at ${env.BUILD_URL}"  
