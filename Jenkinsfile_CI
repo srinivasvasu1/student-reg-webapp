@@ -1,167 +1,108 @@
 pipeline {
-
-  agent any
-
-  triggers {
-    githubPush()
-  }
-
-  options {
-    buildDiscarder logRotator(numToKeepStr: '5')
-    timeout(time: 10, unit: 'MINUTES')
-    disableConcurrentBuilds()
-  }
-
-  environment {
-    AWS_REGION = "ap-south-1"
-    EKS_CLUSTER_NAME = "eks-demo"
-    IMAGE_REGISTRY_ENDPOINT = "775694652978.dkr.ecr.ap-south-1.amazonaws.com"
-    IMAGE_REPOSITORY_NAME = "student-reg-webapp"
-    IMAGE_REGISTRY = "${IMAGE_REGISTRY_ENDPOINT}/${IMAGE_REPOSITORY_NAME}"
-  }
-
-  tools {
-    maven 'Maven-3.9.10'
-  }
-
-  stages {
-
-    stage("Checkout Code") {
-      steps {
-        git branch: 'development', credentialsId: 'GitHubCred', url: 'https://github.com/Rushi-Technologies/student-reg-webapp.git'
-      }
+    
+    agent any
+    
+    triggers {
+       githubPush()
     }
 
-    stage("Run Unit Tests") {
-      steps {
-        sh "mvn clean test"
-      }
+
+    options {
+      buildDiscarder logRotator(numToKeepStr: '5')
+      timeout(time: 10, unit: 'MINUTES')
+      disableConcurrentBuilds()
+    }
+    
+    environment {
+        IMAGE_REGISTRY_ENDPOINT = "775694652978.dkr.ecr.ap-south-1.amazonaws.com"
+        IMAGE_REPOSITORY_NAME = "student-reg-webapp"
+        IMAGE_REGISTRY = "${IMAGE_REGISTRY_ENDPOINT}/${IMAGE_REPOSITORY_NAME}"
+    }
+    
+    tools {
+        maven 'Maven-3.9.10'
     }
 
-    stage("Maven Clean Package") {
-      steps {
-        sh "mvn clean package"
-      }
-    }
-
-    stage("Build Docker Image") {
-      steps {
-        sh "docker build -t ${IMAGE_REGISTRY}:$BUILD_NUMBER ."
-      }
-    }
-
-    stage("Push Docker Image to ECR") {
-      steps {
-        sh ""
-        "
-        aws ecr get - login - password--region ap - south - 1 | docker login--username AWS--password - stdin $ {
-          IMAGE_REGISTRY_ENDPOINT
+    stages {
+        stage('Git CheckOut') {
+            steps {
+               git branch: 'development', credentialsId: 'GitHubCred', url: 'https://github.com/Rushi-Technologies/student-reg-webapp.git'
+            }
         }
-        docker push $ {
-          IMAGE_REGISTRY
-        }: $BUILD_NUMBER
-          ""
-        "
-      }
-    }
+        
+       stage("Run Unit Tests"){
+           steps {
+               sh "mvn clean test"
+           }
+       } 
 
-    stage('Update deployment image tag and push') {
-      steps {
-        withCredentials([usernamePassword(
-          credentialsId: 'GitHubCred',
-          usernameVariable: 'GIT_USER',
-          passwordVariable: 'GIT_TOKEN'
-        )]) {
+      stage("Maven Clean Package"){
+           steps {
+               sh "mvn clean package"
+           }
+       }
+       
+       stage("Build Docker Image"){
+             steps {
+                 sh "docker build -t ${IMAGE_REGISTRY}:$BUILD_NUMBER ."
+             }
+       }
+       stage("Push Docker Image to ECR"){
+             steps {
+                     sh """
+                         aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${IMAGE_REGISTRY_ENDPOINT}
+                         docker push ${IMAGE_REGISTRY}:$BUILD_NUMBER
+                     """
+             }
+         }
 
-          sh ''
-          '
-          #!/bin/bash
-          set - e
-          FILE = "k8s_resources/deployment.yaml"
-          # Replace only the image tag(number after: )
-          sed - i "s|image: \\(.*student-reg-webapp:\\).*|image: \\1${BUILD_NUMBER}|"
-          $FILE
+         stage('Update image tag in OPS repo (K8s)') {
+        steps {
+            withCredentials([usernamePassword(
+            credentialsId: 'GitHubCred',
+            usernameVariable: 'GIT_USER',
+            passwordVariable: 'GIT_TOKEN'
+            )]) {
+                
+                 sh '''
+                    set -e
 
-          # Git author info(ONLY
-            for commit history)
-          git config user.email "jenkins@localhost"
-          git config user.name "jenkins"
+                    OPS_DIR="ops-repo"
+                    OPS_REPO="https://${GIT_USER}:${GIT_TOKEN}@github.com/Rushi-Technologies/student-reg-webapp-gitops.git"
 
-          # Commit only
-          if something changed
-          if git diff--quiet $FILE;
-          then
-          echo "Image tag already ${BUILD_NUMBER}. Nothing to commit."
-          exit 0
-          fi
+                    rm -rf "$OPS_DIR"
+                    git clone "$OPS_REPO" "$OPS_DIR"
+                ''' 
 
-          git add $FILE
-          git commit - m "ci: update image tag to ${BUILD_NUMBER}"
+                dir('ops-repo') {
+                    sh '''
+                    set -e
 
-          # Push using GitHub credentials
-          git push https: //$GIT_USER:$GIT_TOKEN@github.com//Rushi-Technologies/student-reg-webapp.git HEAD
-            ''
-          '
+                    FILE="k8s_files/deployment.yaml"
+                    sed -i "s|image: \\(.*student-reg-webapp:\\).*|image: \\1${BUILD_NUMBER}|" $FILE
+
+                    git config user.email "jenkins@localhost"
+                    git config user.name "jenkins"
+
+                    if git diff --quiet; then
+                        echo "No changes detected"
+                        exit 0
+                    fi
+
+                    git add "$FILE"
+                    git commit -m "ci(helm): bump image tag to ${BUILD_NUMBER}"
+                    git push origin main
+                    '''
+                }  
+              
+            }
         }
-      }
     }
-    /**
-    stage('Update  image tag in helm values file and push') {
-      steps {
-        withCredentials([usernamePassword(
-          credentialsId: 'GitHubCred',
-          usernameVariable: 'GIT_USER',
-          passwordVariable: 'GIT_TOKEN'
-        )]) {
-
-          sh ''
-          '
-          #!/bin/bash
-          set - e
-          FILE = "helmchart/values.yaml"
-          # Replace only the image tag(number after: )
-          sed - i.bak '/^[[:space:]]*image:[[:space:]]*$/,/^[^[:space:]]/ s/^[[:space:]]*tag:[[:space:]]*".*"/  tag: "'
-          "${BUILD_NUMBER}"
-          '"/'
-          "$FILE"
-          rm - f "$FILE.bak"
-          # Git author info(ONLY
-            for commit history)
-          git config user.email "jenkins@localhost"
-          git config user.name "jenkins"
-
-          # Commit only
-          if something changed
-          if git diff--quiet $FILE;
-          then
-          echo "Image tag already ${BUILD_NUMBER}. Nothing to commit."
-          exit 0
-          fi
-
-          git add $FILE
-          git commit - m "ci: update image tag in helm values file to ${BUILD_NUMBER}"
-
-          # Push using GitHub credentials
-          git push https: //$GIT_USER:$GIT_TOKEN@github.com//Rushi-Technologies/student-reg-webapp.git HEAD
-            ''
-          '
+ }
+  post{
+        always {
+            sh 'docker system prune -af'
+              cleanWs()
         }
-      }
-    } **/
-
-  }
-
-  post {
-    success {
-      echo "Build and push completed: ${IMAGE_REGISTRY}:$BUILD_NUMBER"
     }
-
-    failure {
-      echo 'Build failed'
-    }
-    always {
-      cleanWs()
-    }
-  }
-
 }
